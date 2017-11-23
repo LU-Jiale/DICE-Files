@@ -16,7 +16,6 @@
 %==========================================================================
 clear all
 clc
-run ICV_setup
 
 % Hyperparameter of experiments
 resize_size=[64 64];
@@ -51,15 +50,17 @@ load('./data/face_recognition/face_recognition_data_va.mat')
 
 for i =1:length(tr_img_sample)
     temp = single(tr_img_sample{i,1})/255;
-    temp = vl_hog(temp, 8);
-    Xtr = [Xtr;temp(:)'];
+    temp1 = vl_hog(temp, 8);
+    temp2 = vl_lbp(temp, 8);
+    Xtr = [Xtr;temp1(:)' temp2(:)' ];
     Ytr = [Ytr;tr_img_sample{i,3}];
 end
 
 for i =1:length(va_img_sample)
     temp = single(va_img_sample{i,1})/255;
-    temp = vl_hog(temp, 8);
-    Xva = [Xva;temp(:)'];
+    temp1 = vl_hog(temp, 8);
+    temp2 = vl_lbp(temp, 8);
+    Xva = [Xva;temp1(:)' temp2(:)' ];
     Yva = [Yva;va_img_sample{i,3}];
 end
 
@@ -68,10 +69,10 @@ Xtr = double(Xtr);
 Xva = double(Xva);
 
 % Train the recognizer
-% model = fitcknn(Xtr,Ytr,'NumNeighbors',3);
+% model = fitcknn(Xtr,Ytr,'NumNeighbors',5);
 % [l,prob] = predict(model,Xva);
-model = liblineartrain(double(Ytr), sparse(Xtr));
-[l,acc1,d] = liblinearpredict(ones(size(Yva,1),1),sparse(Xva),model);
+model = train(double(Ytr), sparse(Xtr));
+[l,acc1,d] = predict(ones(size(Yva,1),1),sparse(Xva),model);
 prob2 = 1./(1+exp(-d));
 prob = [1-prob2, prob2];
 
@@ -109,7 +110,8 @@ disp('Verification:Extracting features..')
 Xtr = []; Ytr = [];
 Xva = []; Yva = [];
 load('./data/face_verification/face_verification_tr.mat')
-
+load('./data/face_verification/face_verification_va.mat')
+load('./data/face_verification/Yale_64x64.mat')
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Loading the training data
 % -tr_img_pair/va_img_pair:
@@ -122,52 +124,37 @@ load('./data/face_verification/face_verification_tr.mat')
 
 
 % You should construct the features in here. (read, resize, extract)
-for i =1:length(tr_img_pair)
-    temp = single(tr_img_pair{i,1})/255;
-    temp = vl_hog(temp, 8);
-    temp_Xtr1 = temp(:)';
-    
-    temp = single(tr_img_pair{i,3})/255;
-    temp = vl_hog(temp, 8);
-    temp_Xtr2 = temp(:)';
-    
-    Xtr = [Xtr;temp_Xtr1-temp_Xtr2];
-end
+
 
 % BoW visual representation (Or any other better representation)
+% Step 1: Represent each image with bag of words
+fprintf('Using Bag of words representation for images\n') 
+if ~exist('vocab.mat', 'file')
+      fprintf('No existing visual word vocabulary found. Computing one from training images\n')
+      
+      num_of_words = 100; %Larger values will work better (to a point) but be slower to compute
+      
+      vocab = codebook(tr_img_pair, num_of_words);
+      save('vocab.mat', 'vocab');
+      load('vocab.mat');
+else 
+      load('vocab.mat');
+end       
+train_image = bags_of_words(tr_img_pair,vocab);
+test_image  = bags_of_words(va_img_pair,vocab);
 
+%%  Step 2: Classify each test image by training and using the appropriate classifier
+fprintf('Using SVM classifier to predict test set categories\n');
 
-load('./data/face_verification/face_verification_va.mat')
-for i =1:length(va_img_pair)
-    temp = single(va_img_pair{i,1})/255;
-    temp = vl_hog(temp, 8);
-    temp_Xva1 = temp(:)';
-    
-    temp = single(va_img_pair{i,3})/255;
-    temp = vl_hog(temp, 8);
-    temp_Xva2 = temp(:)';
-    
-    Xva = [Xva;temp_Xva1-temp_Xva2];
-end
-
-Xtr = double(Xtr);
-Xva = double(Xva);
-%% Training
-% Train the recognizer and evaluate the performance
-% model = fitcknn(Xtr,Ytr,'NumNeighbors',3);
-% [l,prob] = predict(model,Xva);
-model = liblineartrain(double(Ytr), sparse(Xtr));
-[l,acc2,d] = liblinearpredict(ones(size(Xva,1),1),sparse(Xva),model);
+model = train(double(Ytr), sparse(train_image));
+[l,acc1,d] = predict(ones(size(Yva,1),1),sparse(test_image),model);
 prob2 = 1./(1+exp(-d));
 prob = [1-prob2, prob2];
 
 % Compute the accuracy
 acc = mean(l==Yva)*100;
-
-%     
+     
 fprintf('The accuracy of face verification is:%.2f \n', acc)
-
-
 
 %% Visualization the result of face verification
 
