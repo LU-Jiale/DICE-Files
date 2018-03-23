@@ -13,7 +13,7 @@ class gridLocalisation:
         self.gridmap = self.gridmap[::-1]
         self.gridmap = self.gridmap.T
 
-        self.position = np.array([29, 3])
+        self.position = np.array([13, 10])
         self.positionMap = np.ones([32, 42], dtype=float) * 0.001
         self.positionMap[self.position[0], self.position[1]] = 1.0
 
